@@ -1,0 +1,13 @@
+{
+  "name": "keel",
+  "owner": {
+    "name": "Ravi P"
+  },
+  "plugins": [
+    {
+      "name": "keel",
+      "source": "./",
+      "description": "An engineering workflow for product development: size, frame, shape, build, prove, ship, learn, with debugging built in."
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "keel",
+  "version": "0.1.0",
+  "description": "An engineering workflow for product development. Sizes each task, plans just enough, builds in verifiable units, debugs from evidence, and proves the result on the real surface before shipping.",
+  "author": {
+    "name": "Ravi P"
+  },
+  "license": "MIT",
+  "keywords": ["workflow", "engineering", "debugging", "verification", "product"]
+}
