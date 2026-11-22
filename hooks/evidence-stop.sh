@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Stop hook. Active only while a keel task is open (.work/current exists).
-# Blocks finishing an M or L task in prove, ship or done while
-# .work/<slug>/evidence/ is empty. Lets the stop through on the second attempt
-# (stop_hook_active) so it can never loop.
+# For M and L tasks, blocks finishing:
+#   - in build or later without a tracker: line in task.md,
+#   - in build or later without "Counsel verdict: approved" in shape.md
+#     (or in task.md when there is no shape.md, as after debug),
+#   - in prove, ship or done while .work/<slug>/evidence/ is empty.
+# Lets the stop through on the second attempt (stop_hook_active) so it can never loop.
 set -uo pipefail
 command -v jq >/dev/null 2>&1 || exit 0
 
@@ -22,13 +25,31 @@ size=$(field size)
 phase=$(field phase)
 
 case "$size" in M|L) ;; *) exit 0 ;; esac
-case "$phase" in PROVE|SHIP|DONE) ;; *) exit 0 ;; esac
+case "$phase" in BUILD|PROVE|SHIP|LEARN|DONE) ;; *) exit 0 ;; esac
 
-ev="$root/.work/$slug/evidence"
-if [ -d "$ev" ] && [ -n "$(find "$ev" -type f -size +0 2>/dev/null | head -n1)" ]; then
-  exit 0
-fi
+dir="$root/.work/$slug"
+lc=$(printf '%s' "$phase" | tr '[:upper:]' '[:lower:]')
+missing=()
 
-reason="[keel] Task '$slug' (size $size) is in phase $(printf '%s' "$phase" | tr '[:upper:]' '[:lower:]') but .work/$slug/evidence/ is empty. Save the verify output and the real-surface check there before finishing (see the prove skill). If you are only pausing to ask the user something, say so and stop again; a second stop is let through."
+grep -qE '^tracker:[[:space:]]*[^[:space:]]' "$task" \
+  || missing+=("no tracker: line in task.md. Open the pinned tracker (see the track skill), or write 'tracker: none (<reason>)' if the Artifact tool is unavailable.")
+
+plan="$dir/shape.md"; [ -f "$plan" ] || plan="$task"
+grep -qiE '^Counsel verdict:[[:space:]]*approved' "$plan" 2>/dev/null \
+  || missing+=("$(basename "$plan") has no 'Counsel verdict: approved' line. Build starts only after Fable 5.2 approves the plan (see section 0 of the keel skill).")
+
+case "$phase" in
+  PROVE|SHIP|DONE)
+    ev="$dir/evidence"
+    [ -d "$ev" ] && [ -n "$(find "$ev" -type f -size +0 2>/dev/null | head -n1)" ] \
+      || missing+=(".work/$slug/evidence/ is empty. Save the verify output and the real-surface check there (see the prove skill).")
+    ;;
+esac
+
+[ ${#missing[@]} -eq 0 ] && exit 0
+
+reason="[keel] Task '$slug' (size $size) is in phase $lc but:"
+for m in "${missing[@]}"; do reason+=$'\n- '"$m"; done
+reason+=$'\n'"If you are only pausing to ask the user something, say so and stop again; a second stop is let through."
 jq -cn --arg r "$reason" '{decision:"block",reason:$r}'
 exit 0

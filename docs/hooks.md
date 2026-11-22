@@ -38,7 +38,13 @@ It doesn't block anything. Sometimes a skip is the right call, and the point is 
 
 **Runs:** when the agent tries to finish, only while a keel task is open.
 
-For an M or L task in the prove, ship or done phase, it blocks finishing while `.work/<task>/evidence/` has no non-empty file. The agent is told to save the verify output and the real-surface check first.
+For an M or L task, it blocks finishing when:
+
+- the task is in build or later and `task.md` has no `tracker:` line (`tracker: none (<reason>)` counts),
+- the task is in build or later and the plan (`shape.md`, or `task.md` when there is no shape) has no `Counsel verdict: approved` line,
+- the task is in prove, ship or done and `.work/<task>/evidence/` has no non-empty file.
+
+The agent is told what's missing and how to fix it.
 
 If the agent is only pausing to ask you something, its second attempt to stop always goes through, so this hook can never trap it in a loop. S tasks are never blocked.
 

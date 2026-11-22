@@ -16,7 +16,7 @@ The scope is what the user names. Otherwise it is the diff from the merge base w
 Use two independent reviewers. Prefer different models so they fail differently:
 
 - `codex exec` with the brief below, if the `codex` CLI is installed.
-- A subagent on a different model from the one you are running on.
+- A subagent on a different model from the one you are running on: `fable` when the session is on Opus, `opus` otherwise. Never the builder's model, since the builder wrote the code.
 - If neither is available, two fresh subagents.
 
 Give each reviewer the scope, the intent, the relevant file paths, and this brief:
