@@ -43,7 +43,8 @@ check "plain ls"                 ''       "$(careful 'ls -la')"
 check "unparseable payload"      '"ask"'  "$(printf 'not json' | "$HOOKS/careful.sh")"
 
 # gate-guard.sh and evidence-stop.sh need a git repo with an open keel task
-tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/keel-test.XXXXXX") && [ -d "$tmp" ] || { echo "cannot create a temp dir; set TMPDIR to a writable path" >&2; exit 1; }
+trap 'rm -rf "$tmp"' EXIT
 git -C "$tmp" init -q
 printf 'it("a", () => {})\n' > "$tmp/a.test.ts"
 git -C "$tmp" add . && git -C "$tmp" -c user.email=t@t -c user.name=t commit -qm init
@@ -66,16 +67,30 @@ printf 'use .skip( carefully\n' > "$tmp/notes.md"
 check "gate: markdown ignored"   ''       "$(edit "$tmp/notes.md")"
 
 stop() { jq -cn --arg d "$tmp" --argjson a "${1:-false}" '{cwd:$d,stop_hook_active:$a}' | "$HOOKS/evidence-stop.sh"; }
-task() { printf -- '---\nsize: %s\nphase: %s\n---\n# goal\n' "$1" "$2" > "$tmp/.work/t1/task.md"; }
+task() { printf -- '---\nsize: %s\nphase: %s\n%s---\n# goal\n' "$1" "$2" "${3-tracker: https://claude.ai/artifact/x\n}" > "$tmp/.work/t1/task.md"; }
+approve() { printf '## Counsel (Fable 5.2)\nCounsel verdict: approved (round 1)\n' > "$tmp/.work/t1/shape.md"; }
 
-task M build;  check "stop: M build passes"     ''         "$(stop)"
+task M shape '';  check "stop: M shape needs nothing yet" ''     "$(stop)"
+task M build;     check "stop: M build without counsel" 'Counsel verdict' "$(stop)"
+approve
+task M build;     check "stop: M build approved passes" ''      "$(stop)"
+task M build '';  check "stop: M build without tracker" 'no tracker' "$(stop)"
+task M build 'tracker: none (no Artifact tool)\n'
+                  check "stop: tracker none is accepted" ''     "$(stop)"
 task M prove;  check "stop: M prove no evidence" '"block"' "$(stop)"
                check "stop: second stop passes" ''         "$(stop true)"
-task S done;   check "stop: S never blocks"     ''         "$(stop)"
-task L ship;   mkdir -p "$tmp/.work/t1/evidence"; : > "$tmp/.work/t1/evidence/empty.txt"
+task S done '';  rm "$tmp/.work/t1/shape.md"
+               check "stop: S never blocks"     ''         "$(stop)"
+task L ship;   approve; mkdir -p "$tmp/.work/t1/evidence"; : > "$tmp/.work/t1/evidence/empty.txt"
                check "stop: empty file is not evidence" '"block"' "$(stop)"
 printf 'ok\n' > "$tmp/.work/t1/evidence/verify.txt"
                check "stop: L ship with evidence" ''       "$(stop)"
+printf '## Counsel\nRound 1: Improve\n' > "$tmp/.work/t1/shape.md"
+               check "stop: L ship, counsel not approved" 'Counsel verdict' "$(stop)"
+rm "$tmp/.work/t1/shape.md"
+task M build;  check "stop: debug rejoin, no plan approval" 'task.md has no' "$(stop)"
+printf -- '---\nsize: M\nphase: build\ntracker: u\n---\n## Plan\nx\nCounsel verdict: approved (round 1)\n' > "$tmp/.work/t1/task.md"
+               check "stop: approval in task.md accepted" ''  "$(stop)"
 rm "$tmp/.work/current"
 task M prove;  rm -rf "$tmp/.work/t1/evidence"
                check "stop: no open task passes" ''        "$(stop)"

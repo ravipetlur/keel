@@ -13,5 +13,8 @@
 ## Forks
 - <question> Decided: <choice> Evidence: <prototype result, or "user call, default: ...">
 
-## Critique (L only)
+## Counsel (Fable 5.2)
+### Round 1: <Approved | Improve>
 - <point> Accepted / rejected: <reason>
+
+Counsel verdict: approved (round <N>)

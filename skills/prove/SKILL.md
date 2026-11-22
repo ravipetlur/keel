@@ -5,7 +5,7 @@ description: The prove phase of the keel workflow. Runs the repo's checks, demon
 
 # Prove
 
-Goal: evidence that the change does what the brief says, observed where users meet it. Set `phase: prove`. Save every piece of evidence under `.work/<slug>/evidence/` (command output as `.txt`, screenshots, response bodies). keel's Stop hook blocks finishing an M or L task while that folder is empty.
+Goal: evidence that the change does what the brief says, observed where users meet it. This phase belongs to the responsible role (Opus); do not hand the proof to a builder. Set `phase: prove`. Save every piece of evidence under `.work/<slug>/evidence/` (command output as `.txt`, screenshots, response bodies). keel's Stop hook blocks finishing an M or L task while that folder is empty.
 
 ## 1. Repo checks
 

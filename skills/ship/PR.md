@@ -14,3 +14,9 @@
 
 ## Decisions you can override
 - <decision> Why: <reason> To reverse: <how>
+
+## Roles
+- Built by Sonnet 5.5, unit by unit
+- Plan approved by Fable 5.2 in <N> round(s)
+- Reviewed, proved and shipped by Opus 5.5
+- Tracker: <url>

@@ -22,6 +22,7 @@ Write the body from `PR.md` in this skill's directory, using the brief and the e
 - **Evidence** pastes the key lines of the real output, not "tests pass".
 - **Gates weakened** lists every row in `.work/<slug>/gates.tsv` with its reason. If there are none, write "None".
 - **Decisions you can override** comes from `decisions.tsv` and the forks in `shape.md`.
+- **Roles** says, in one line each, that Sonnet 5.5 built the units, Fable 5.2 approved the plan (with the round count), and Opus 5.5 reviewed and proved it. Link the tracker.
 
 Open it with `gh pr create`, using the repo's PR template if it has one and filling the sections above into it.
 

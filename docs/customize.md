@@ -7,7 +7,8 @@ keel is a small set of Markdown files and shell scripts. Changing it means editi
 | Want to change | Edit |
 |---|---|
 | The principles | `skills/keel/PRINCIPLES.md` |
-| Sizes, the flow, autonomy rules, reply format | `skills/keel/SKILL.md` |
+| Sizes, the flow, roles and models, autonomy rules, reply format | `skills/keel/SKILL.md` |
+| The tracker page or its data | `skills/track/SKILL.md`, `skills/track/template.html` |
 | One phase | `skills/<phase>/SKILL.md` |
 | The brief, shape or PR layout | `skills/frame/brief.md`, `skills/shape/shape.md`, `skills/ship/PR.md` |
 | What gets blocked or asked about | `hooks/careful.sh` |
@@ -30,4 +31,8 @@ After an edit, run `/plugin` and update keel, or reinstall it, so Claude Code pi
 
 **Share lessons with your team.** Move `.work/learnings.md` to a committed path such as `docs/learnings.md`, and update `skills/learn/SKILL.md` to match.
 
-**Use a different second model.** `shape` and `review` try the `codex` CLI first, then a subagent on a different model, then a fresh subagent. Reorder that list to suit what you have.
+**Change which model plays which role.** Edit the roles table in section 0 of `skills/keel/SKILL.md`. The `Agent model` column is what keel passes when it starts a subagent (`sonnet`, `fable`, `opus`). Update the `roles` line in `skills/track/SKILL.md` and the Roles block in `skills/ship/PR.md` to match.
+
+**Use a different second model for review.** `review` tries the `codex` CLI first, then a subagent on a different model, then fresh subagents. Reorder that list to suit what you have.
+
+**Track S tasks too.** Change the "When" line in `skills/track/SKILL.md`.

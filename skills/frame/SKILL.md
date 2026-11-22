@@ -21,4 +21,6 @@ Goal: make sure the right thing gets built, in about five minutes. You are an en
 - **"Not doing" is explicit.** Scope creep is the most common way a good brief goes bad.
 - **The smallest version worth shipping** is real value to a user, not a scaffold.
 
+**L only:** run the counsel loop from `../keel/SKILL.md` section 0 on `brief.md` alone before shaping, so a wrong premise is caught before the design is built on it.
+
 Then set `phase: shape` and continue with `../shape/SKILL.md`.

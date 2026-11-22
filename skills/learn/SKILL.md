@@ -26,4 +26,4 @@ Ship the structural fix as its own small commit or PR, and mark the learning lin
 
 ## 3. Close the task
 
-Set `phase: done` in `task.md`, then delete `.work/current`. Give the final reply described in `../keel/SKILL.md`.
+Set `phase: done` in `task.md`, close the last tracker rows and set its headline to the outcome and PR link (`../track/SKILL.md`), then delete `.work/current`. Give the final reply described in `../keel/SKILL.md`.

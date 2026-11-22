@@ -1,0 +1,404 @@
+<title>PROJECT Build Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one column of stacked panels, a status read top to bottom: where it is, the numbers, plan against actual, milestones, the open milestone's tasks, then what's needed and what happened. */
+:root {
+  --bg: #f4f5f9; --panel: #ffffff; --panel-2: #eef0f6; --line: #dcdfe9; --fg: #171a26; --muted: #5f6577; --faint: #8a90a2;
+  --plan: #b9c8f2; --actual: #2f5bd8; --expect: #2f5bd8; --today: #c43d3d;
+  --violet: #6d45c9; --violet-bg: #efe9fb; --violet-line: #c9b8ef;
+  --ok: #1d7a4a; --ok-bg: #e3f4ea; --warn: #9a6200; --warn-bg: #fbf0d9; --late: #b03a2e; --late-bg: #fbe6e3;
+  --info: #2f5bd8; --info-bg: #e5ecfc; --fix: #b4521b; --fix-bg: #fceadf; --q: #6b7183; --q-bg: #eceef3;
+  --row-hl: #fbf5e6; --row-hl-line: #e9d9a8;
+  --sans: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif; --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #11131b; --panel: #181b25; --panel-2: #1e2230; --line: #2b3042; --fg: #e8eaf2; --muted: #9aa0b4; --faint: #6d7388;
+  --plan: #2c4a8f; --actual: #5b86f5; --expect: #7fa2ff; --today: #e0675f;
+  --violet: #b9a2ff; --violet-bg: #2a2142; --violet-line: #4d3d7d;
+  --ok: #5fd08f; --ok-bg: #173325; --warn: #f0b54c; --warn-bg: #3a2c12; --late: #f08377; --late-bg: #3b1d1a;
+  --info: #7fa2ff; --info-bg: #1c2747; --fix: #f2a06b; --fix-bg: #3a2416; --q: #9aa0b4; --q-bg: #252a39;
+  --row-hl: #2a2414; --row-hl-line: #5a4a1f; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #11131b; --panel: #181b25; --panel-2: #1e2230; --line: #2b3042; --fg: #e8eaf2; --muted: #9aa0b4; --faint: #6d7388;
+  --plan: #2c4a8f; --actual: #5b86f5; --expect: #7fa2ff; --today: #e0675f;
+  --violet: #b9a2ff; --violet-bg: #2a2142; --violet-line: #4d3d7d;
+  --ok: #5fd08f; --ok-bg: #173325; --warn: #f0b54c; --warn-bg: #3a2c12; --late: #f08377; --late-bg: #3b1d1a;
+  --info: #7fa2ff; --info-bg: #1c2747; --fix: #f2a06b; --fix-bg: #3a2416; --q: #9aa0b4; --q-bg: #252a39;
+  --row-hl: #2a2414; --row-hl-line: #5a4a1f; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.5 var(--sans); }
+.wrap { max-width: 1120px; margin: 0 auto; padding-inline: 16px; padding-block: 24px 40px; display: grid; gap: 22px; }
+h1 { font-size: 26px; line-height: 1.2; margin: 2px 0 6px; letter-spacing: -0.01em; text-wrap: balance; }
+h2 { font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+.eyebrow { font: 500 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
+.mono, time, .num, .date { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.lead { margin: 0; color: var(--fg); max-width: 75ch; }
+.lead b { color: var(--info); font-weight: 600; }
+.expected { margin: 4px 0 0; color: var(--muted); }
+.expected b { color: var(--fg); font-weight: 600; }
+.stamp { color: var(--faint); font-size: 12px; }
+
+[hidden] { display: none !important; }
+.needs { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border: 1px solid var(--violet-line); background: var(--violet-bg); border-radius: 8px; }
+.needs .tag { flex: none; font: 600 10px var(--mono); letter-spacing: .12em; color: var(--violet); padding-top: 2px; }
+.needs p { margin: 0; min-width: 0; }
+
+.cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; min-width: 0; }
+.card .k { font-size: 12px; color: var(--muted); }
+.card .v { font-size: 20px; font-weight: 600; margin: 4px 0 2px; overflow-wrap: anywhere; }
+.card .s { font-size: 12px; color: var(--faint); }
+.good { color: var(--ok) !important; } .bad { color: var(--late) !important; }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+.panel-head h2 { margin: 0; }
+button { font: inherit; color: inherit; }
+.toggle { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+.toggle:focus-visible, .ms:focus-visible { outline: 2px solid var(--actual); outline-offset: 2px; }
+.key { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.key i { display: inline-block; width: 18px; height: 8px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
+.key .d { width: 9px; height: 9px; transform: rotate(45deg); border-radius: 1px; }
+.scroll { overflow-x: auto; }
+svg.gantt { display: block; min-width: 680px; width: 100%; }
+svg.gantt text { font-family: var(--mono); font-size: 10px; fill: var(--faint); }
+svg.gantt .lbl { font-family: var(--sans); font-size: 11.5px; fill: var(--fg); }
+svg.gantt .code { font-family: var(--mono); font-size: 10px; fill: var(--faint); }
+svg.gantt .grid { stroke: var(--line); stroke-width: 1; }
+svg.gantt .plan { fill: var(--plan); }
+svg.gantt .act { fill: var(--actual); }
+svg.gantt .exp { fill: var(--expect); }
+svg.gantt .today { stroke: var(--today); stroke-width: 1.5; stroke-dasharray: 3 3; }
+svg.gantt .todayt { fill: var(--today); }
+
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font: 600 10.5px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--faint); padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tbody tr:last-child td { border-bottom: 0; }
+tr.current td { background: var(--row-hl); }
+tr.current td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+td.task { min-width: 220px; }
+td.task b { font-weight: 600; display: block; }
+td.task .note { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+td.sub, .sub { color: var(--faint); font-size: 12px; display: block; }
+td .main { display: block; }
+.ahead { color: var(--ok); white-space: nowrap; } .behind { color: var(--late); white-space: nowrap; } .even { color: var(--muted); white-space: nowrap; }
+
+.pill { display: inline-block; font: 500 11px var(--sans); padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.pill::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; margin-right: 6px; vertical-align: 1px; }
+.s-done { color: var(--ok); background: var(--ok-bg); }
+.s-active, .s-building { color: var(--warn); background: var(--warn-bg); }
+.s-review { color: var(--info); background: var(--info-bg); }
+.s-fixing { color: var(--fix); background: var(--fix-bg); }
+.s-waiting, .s-now { color: var(--violet); background: var(--violet-bg); }
+.s-queued, .s-planned, .s-later { color: var(--q); background: var(--q-bg); }
+
+.ms-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.ms { text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; cursor: pointer; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.ms[aria-pressed="true"] { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn) inset; }
+.ms .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.ms .code { font: 500 11px var(--mono); color: var(--faint); }
+.ms .title { font-weight: 600; }
+.ms .sum { font-size: 12.5px; color: var(--muted); }
+.ms .dates { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+.ms .verdict { font-size: 12px; }
+.meter { height: 4px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--ok); }
+.ms.active .meter i { background: var(--warn); }
+
+.cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.list li { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; min-width: 0; }
+.list li.done { opacity: .72; }
+.list .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; }
+.list .when { font-size: 12px; color: var(--faint); }
+.activity li { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 10px; }
+.activity time { color: var(--faint); font-size: 12px; padding-top: 1px; }
+.empty { color: var(--faint); }
+.legend { display: flex; flex-wrap: wrap; gap: 8px; }
+.foot { color: var(--faint); font-size: 12px; }
+.roles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.role { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid; gap: 2px; min-width: 0; }
+.role .r { font: 500 11px var(--mono); color: var(--faint); text-transform: uppercase; letter-spacing: .04em; }
+.role .m { font-weight: 600; }
+.role .d { font-size: 12.5px; color: var(--muted); }
+
+@media (max-width: 860px) { .roles { grid-template-columns: minmax(0, 1fr); } .cards, .ms-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .cols { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 460px) { .cards, .ms-grid { grid-template-columns: minmax(0, 1fr); } h1 { font-size: 22px; } }
+@media (prefers-reduced-motion: no-preference) { .meter i { transition: width .4s ease; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow" id="eyebrow">Build tracker</div>
+    <h1>Where the build is</h1>
+    <p class="lead" id="now">Loading the latest progress…</p>
+    <p class="expected" id="eta" hidden></p>
+    <div class="stamp" id="stamp"></div>
+  </header>
+
+  <div class="needs" id="askNow" hidden><span class="tag">NEEDS YOU</span><p id="askNowText"></p></div>
+
+  <section class="roles" id="roles" aria-label="Who does what" hidden></section>
+
+  <section class="cards" aria-label="Summary">
+    <div class="card"><div class="k" id="c1k">Finish expected</div><div class="v" id="c1v">—</div><div class="s" id="c1s"></div></div>
+    <div class="card"><div class="k">Tasks done</div><div class="v" id="c2v">—</div><div class="s" id="c2s"></div></div>
+    <div class="card"><div class="k">Current milestone</div><div class="v" id="c3v">—</div><div class="s" id="c3s"></div></div>
+    <div class="card"><div class="k">Calendar</div><div class="v" id="c4v">—</div><div class="s" id="c4s"></div></div>
+  </section>
+
+  <section class="panel" aria-labelledby="pva-h">
+    <div class="panel-head"><h2 id="pva-h">Plan against actual</h2><button class="toggle" id="viewToggle" type="button" aria-pressed="false">Show as table</button></div>
+    <div class="key"><span><i style="background:var(--plan)"></i>Planned</span><span><i style="background:var(--actual)"></i>Actual</span><span><i class="d" style="background:var(--expect)"></i>Expected finish</span><span><i style="background:var(--today);height:2px"></i>Today</span></div>
+    <div class="scroll" id="ganttWrap"></div>
+    <div class="scroll" id="ganttTable" hidden></div>
+    <div class="foot" id="baseline"></div>
+  </section>
+
+  <section aria-labelledby="ms-h">
+    <h2 id="ms-h">Milestones</h2>
+    <div class="ms-grid" id="milestones"><div class="empty">Milestones appear here.</div></div>
+  </section>
+
+  <section class="panel" aria-labelledby="tasks-h">
+    <div class="panel-head"><h2 id="tasks-h" style="font-size:16px;letter-spacing:0;text-transform:none;color:var(--fg)">Tasks</h2><span class="stamp" id="taskCount"></span></div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>#</th><th>Task</th><th>Who</th><th>Status</th><th>Planned</th><th>Actual</th><th>Against plan</th><th>Review</th></tr></thead>
+        <tbody id="tasks"><tr><td colspan="8" class="empty">Tasks appear when a milestone's plan is written.</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="cols">
+    <div><h2>What I'll need from you</h2><ul class="list" id="asks"><li class="empty">Nothing yet.</li></ul></div>
+    <div><h2>Recent activity</h2><ul class="list activity" id="activity"><li class="empty">No activity yet.</li></ul></div>
+  </section>
+
+  <div class="legend" aria-label="Status legend">
+    <span class="pill s-queued">Queued</span><span class="pill s-building">Building</span><span class="pill s-review">In review</span>
+    <span class="pill s-fixing">Fixing</span><span class="pill s-waiting">Waiting on you</span><span class="pill s-done">Done</span>
+  </div>
+  <div class="foot" id="offline" hidden>Live progress shows when you open this page signed in to claude.ai.</div>
+</div>
+
+<script>
+(() => {
+  const LABELS = { done: "Done", active: "In progress", building: "Building", review: "In review", fixing: "Fixing",
+    waiting: "Waiting on you", queued: "Queued", planned: "Planned", now: "Now", later: "Later" };
+  const state = { project: null, milestones: [], tasks: [], asks: [], current: null, activity: [], selected: null, table: false };
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+  const pill = (s) => el("span", "pill s-" + (LABELS[s] ? s : "queued"), LABELS[s] || s || "");
+  const D = (v) => { if (!v) return null; const d = new Date(v); return isNaN(d) ? null : d; };
+  const DAY = 86400000;
+  const now = () => new Date();
+  const fmtDay = (d) => d ? d.toLocaleDateString([], { month: "short", day: "numeric" }) : "—";
+  const fmtTime = (d) => d ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
+  const fmtWhen = (d) => { if (!d) return ""; return d.toDateString() === now().toDateString() ? fmtTime(d) : fmtDay(d) + " " + fmtTime(d); };
+  const fmtDur = (ms) => { if (ms == null || ms < 0) return ""; const m = Math.round(ms / 60000); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`; };
+  // Positive = late, negative = early.
+  function slip(actual, planned) {
+    if (!actual || !planned) return null;
+    const ms = actual - planned, a = Math.abs(ms);
+    if (a < 2 * 3600000) return { cls: "even", text: "On time" };
+    const amount = a >= DAY ? `${Math.round(a / DAY)} day${Math.round(a / DAY) === 1 ? "" : "s"}` : `${Math.round(a / 3600000)} h`;
+    return ms < 0 ? { cls: "ahead", text: `▼ ${amount} early` } : { cls: "behind", text: `▲ ${amount} late` };
+  }
+  const plannedOf = (t) => D(t.plannedAt || t.expectedAt);
+  const msTasks = (code) => state.tasks.filter(t => t.milestone === code && t.number !== 0);
+  const msRows = (code) => state.tasks.filter(t => t.milestone === code);
+  const activeMs = () => state.milestones.find(m => m.status === "active") || state.milestones.find(m => m.status !== "done") || state.milestones[state.milestones.length - 1];
+
+  function renderHeader() {
+    const p = state.project || {}, cur = state.current;
+    $("eyebrow").textContent = (p.name || "Build") + " · Build tracker";
+    if (cur) {
+      $("now").replaceChildren();
+      if (cur.phase) $("now").append(el("b", null, cur.phase + " · "));
+      $("now").append(document.createTextNode(cur.headline || ""));
+      $("stamp").textContent = cur.updatedAt ? "Updated " + fmtWhen(D(cur.updatedAt)) : "";
+      $("askNow").hidden = !cur.askNow; $("askNowText").textContent = cur.askNow || "";
+      $("eta").hidden = !cur.milestoneEta; $("eta").replaceChildren(el("b", null, "Expected: "), document.createTextNode(cur.milestoneEta || ""));
+    }
+  }
+
+  function renderRoles() {
+    const roles = (state.project && Array.isArray(state.project.roles)) ? state.project.roles : [];
+    $("roles").hidden = !roles.length;
+    $("roles").replaceChildren(...roles.map(r => { const c = el("div", "role"); c.append(el("span", "r", r.role || ""), el("span", "m", r.model || ""), el("span", "d", r.does || "")); return c; }));
+  }
+
+  function renderCards() {
+    const p = state.project || {};
+    const target = p.targetLabel || "v1";
+    const pEnd = D(p.plannedEnd), xEnd = D(p.expectedEnd) || pEnd, pStart = D(p.plannedStart);
+    $("c1k").textContent = target + " expected";
+    $("c1v").textContent = xEnd ? fmtDay(xEnd) : "—";
+    const sl = slip(xEnd, pEnd);
+    $("c1s").textContent = sl ? (sl.cls === "even" ? "On track" : sl.text.replace(/[▼▲] /, "") + " against the plan") : "";
+    $("c1s").className = "s " + (sl ? (sl.cls === "ahead" ? "good" : sl.cls === "behind" ? "bad" : "") : "");
+    const all = state.tasks.filter(t => t.number !== 0);
+    const done = all.filter(t => t.status === "done").length;
+    $("c2v").textContent = all.length ? `${done} of ${all.length}` : "—";
+    $("c2s").textContent = all.length ? `${Math.round(done / all.length * 100)}% of the tasks planned so far` : "";
+    const m = activeMs();
+    if (m) {
+      const ts = msTasks(m.code), d = ts.filter(t => t.status === "done").length;
+      $("c3v").textContent = `${m.code} · ${m.title}`;
+      $("c3s").textContent = (ts.length ? `${d} of ${ts.length} tasks done` : "No tasks yet") + (m.expectedEnd ? ` · expected ${fmtDay(D(m.expectedEnd))}` : "");
+    }
+    if (pStart) {
+      const day0 = (d) => { const c = new Date(d); c.setHours(0, 0, 0, 0); return c; };
+      const day = Math.max(1, Math.round((day0(now()) - day0(pStart)) / DAY) + 1);
+      const total = pEnd ? Math.round((day0(pEnd) - day0(pStart)) / DAY) + 1 : null;
+      $("c4v").textContent = total ? `Day ${day} of ${total}` : `Day ${day}`;
+      $("c4s").textContent = pEnd ? `planned ${fmtDay(pStart)} to ${fmtDay(pEnd)}` : "";
+    }
+  }
+
+  function bounds() {
+    const ds = [];
+    for (const m of state.milestones) for (const k of ["plannedStart", "plannedEnd", "actualStart", "actualEnd", "expectedEnd"]) { const d = D(m[k]); if (d) ds.push(+d); }
+    ds.push(+now());
+    if (!ds.length) return null;
+    const lo = new Date(Math.min(...ds)); lo.setHours(0, 0, 0, 0);
+    const hi = new Date(Math.max(...ds)); hi.setHours(0, 0, 0, 0);
+    return { lo: +lo - DAY, hi: +hi + 2 * DAY };
+  }
+
+  function renderGantt() {
+    const b = bounds(), ms = state.milestones;
+    if (!b || !ms.length) { $("ganttWrap").replaceChildren(el("div", "empty", "The timeline appears once milestones have dates.")); return; }
+    const NS = "http://www.w3.org/2000/svg", W = 1000, L = 210, R = 16, top = 26, rowH = 34;
+    const H = top + ms.length * rowH + 8;
+    const x = (t) => L + (t - b.lo) / (b.hi - b.lo) * (W - L - R);
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("class", "gantt"); svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", "Each milestone's planned dates against its actual dates and expected finish");
+    const add = (tag, attrs, text) => { const n = document.createElementNS(NS, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); if (text != null) n.textContent = text; svg.append(n); return n; };
+    const span = (b.hi - b.lo) / DAY, step = span > 40 ? 7 : span > 16 ? 3 : 1;
+    for (let t = b.lo + DAY; t < b.hi; t += step * DAY) {
+      add("line", { x1: x(t), x2: x(t), y1: top - 6, y2: H - 4, class: "grid" });
+      add("text", { x: x(t) + 3, y: 14 }, fmtDay(new Date(t)));
+    }
+    ms.forEach((m, i) => {
+      const y = top + i * rowH;
+      add("text", { x: 0, y: y + 12, class: "code" }, m.code);
+      add("text", { x: 0, y: y + 26, class: "lbl" }, (m.title || "").length > 30 ? m.title.slice(0, 29) + "…" : (m.title || ""));
+      const ps = D(m.plannedStart), pe = D(m.plannedEnd);
+      if (ps && pe) add("rect", { x: x(+ps), y: y + 4, width: Math.max(3, x(+pe) - x(+ps)), height: 9, rx: 3, class: "plan" });
+      const as = D(m.actualStart), ae = D(m.actualEnd) || (m.status === "active" && as ? now() : null);
+      if (as && ae) add("rect", { x: x(+as), y: y + 16, width: Math.max(3, x(+ae) - x(+as)), height: 9, rx: 3, class: "act" });
+      const xe = D(m.expectedEnd);
+      if (xe && m.status !== "done") { const cx = x(+xe), cy = y + 20; add("path", { d: `M${cx} ${cy - 5} L${cx + 5} ${cy} L${cx} ${cy + 5} L${cx - 5} ${cy} Z`, class: "exp" }); }
+    });
+    const tx = x(+now());
+    add("line", { x1: tx, x2: tx, y1: top - 8, y2: H - 2, class: "today" });
+    add("text", { x: Math.min(tx + 4, W - 40), y: H - 2, class: "todayt" }, "Today");
+    $("ganttWrap").replaceChildren(svg);
+
+    const tb = el("table"); const hd = el("thead"); const hr = el("tr");
+    for (const h of ["Milestone", "Planned", "Actual", "Expected finish", "Against plan"]) hr.append(el("th", null, h));
+    hd.append(hr); tb.append(hd); const bd = el("tbody");
+    for (const m of ms) {
+      const tr = el("tr"); const ps = D(m.plannedStart), pe = D(m.plannedEnd), as = D(m.actualStart), ae = D(m.actualEnd), xe = D(m.expectedEnd);
+      const sl = slip(ae || xe, pe);
+      tr.append(el("td", null, `${m.code} · ${m.title}`), el("td", "date", ps && pe ? `${fmtDay(ps)} – ${fmtDay(pe)}` : "—"),
+        el("td", "date", as ? `${fmtDay(as)} – ${ae ? fmtDay(ae) : "now"}` : "—"), el("td", "date", m.status === "done" ? "—" : fmtDay(xe)));
+      const s = el("td"); if (sl) s.append(el("span", sl.cls, sl.text)); else s.textContent = "—"; tr.append(s); bd.append(tr);
+    }
+    tb.append(bd); $("ganttTable").replaceChildren(tb);
+    $("baseline").textContent = (state.project && state.project.baselineNote) || "";
+  }
+
+  function renderMilestones() {
+    const g = $("milestones"); if (!state.milestones.length) return; g.replaceChildren();
+    const sel = state.selected || (activeMs() || {}).code;
+    for (const m of state.milestones) {
+      const ts = msTasks(m.code), d = ts.filter(t => t.status === "done").length;
+      const pct = m.status === "done" ? 100 : ts.length ? Math.round(d / ts.length * 100) : 0;
+      const b = el("button", "ms" + (m.status === "active" ? " active" : "")); b.type = "button"; b.setAttribute("aria-pressed", String(m.code === sel));
+      const top = el("div", "top"); top.append(el("span", "code", m.code), pill(m.status));
+      const ps = D(m.plannedStart), pe = D(m.plannedEnd), ae = D(m.actualEnd), xe = D(m.expectedEnd);
+      const dates = el("div", "dates", ps && pe ? `Planned ${fmtDay(ps)} – ${fmtDay(pe)}` : "");
+      const v = el("div", "verdict");
+      if (m.status === "done" && ae) { const sl = slip(ae, pe); v.append(document.createTextNode(`Finished ${fmtDay(ae)} `)); if (sl) v.append(el("span", sl.cls, "· " + sl.text)); }
+      else if (xe) { const sl = slip(xe, pe); v.append(document.createTextNode(`Expected ${fmtDay(xe)} `)); if (sl) v.append(el("span", sl.cls, "· " + (sl.cls === "even" ? "on track" : sl.text))); }
+      const meter = el("div", "meter"); const bar = el("i"); bar.style.width = pct + "%"; meter.append(bar);
+      meter.setAttribute("role", "img"); meter.setAttribute("aria-label", ts.length ? `${d} of ${ts.length} tasks done` : "Not started");
+      b.append(top, el("span", "title", m.title || ""), el("span", "sum", m.summary || ""), dates, v, meter);
+      b.addEventListener("click", () => { state.selected = m.code; try { localStorage.setItem("tracker-ms", m.code); } catch (e) {} renderMilestones(); renderTasks(); });
+      g.append(b);
+    }
+  }
+
+  function renderTasks() {
+    const m = state.milestones.find(x => x.code === (state.selected || (activeMs() || {}).code)); const body = $("tasks"); body.replaceChildren();
+    if (!m) return;
+    const ts = msRows(m.code), counted = msTasks(m.code), d = counted.filter(t => t.status === "done").length;
+    $("tasks-h").textContent = `${m.code} · ${m.title}`;
+    $("taskCount").textContent = counted.length ? `${d} of ${counted.length} done` : "";
+    if (!ts.length) { const tr = el("tr"); const td = el("td", "empty", "Tasks appear when this milestone's plan is written."); td.colSpan = 8; tr.append(td); body.append(tr); return; }
+    for (const t of ts) {
+      const tr = el("tr", ["building", "review", "fixing", "waiting"].includes(t.status) ? "current" : "");
+      const task = el("td", "task"); task.append(el("b", null, t.title || "")); if (t.note) task.append(el("span", "note", t.note));
+      const st = el("td"); st.append(pill(t.status));
+      const planned = plannedOf(t), started = D(t.startedAt), closed = D(t.closedAt), expected = D(t.expectedAt);
+      const pl = el("td", "date", planned ? fmtDay(planned) : "—"); if (planned) pl.append(el("span", "sub", fmtTime(planned)));
+      const ac = el("td");
+      if (t.status === "done" && closed) { ac.append(el("span", "main", "Closed " + fmtWhen(closed))); if (started) ac.append(el("span", "sub", "took " + fmtDur(closed - started))); }
+      else if (started) { ac.append(el("span", "main", "Started " + fmtWhen(started))); if (t.expectedNote) ac.append(el("span", "sub", t.expectedNote)); }
+      else ac.textContent = "—";
+      const ag = el("td"); const sl = t.status === "done" ? slip(closed, planned) : (planned && t.plannedAt && expected ? slip(expected, planned) : (planned && now() > planned && t.status !== "done" ? slip(now(), planned) : null));
+      if (sl) ag.append(el("span", sl.cls, sl.cls === "even" && t.status !== "done" ? "On track" : sl.text)); else ag.append(el("span", "even", t.status === "done" ? "—" : "On track"));
+      const rounds = t.status === "queued" ? "—" : t.reviewRounds ? `${t.reviewRounds} fix round${t.reviewRounds > 1 ? "s" : ""}` : (t.status === "done" ? "Clean" : "—");
+      tr.append(el("td", "num", String(t.number ?? "")), task, el("td", "sub", t.who || ""), st, pl, ac, ag, el("td", "sub", rounds));
+      body.append(tr);
+    }
+  }
+
+  function renderLists() {
+    if (state.asks.length) {
+      const asks = $("asks"); asks.replaceChildren();
+      const order = { now: 0, later: 1, done: 2 };
+      for (const a of [...state.asks].sort((p, q) => (order[p.status] ?? 1) - (order[q.status] ?? 1) || (p.order || 0) - (q.order || 0))) {
+        const li = el("li", a.status === "done" ? "done" : ""); const row = el("div", "row");
+        row.append(el("span", "when", a.when || ""), pill(a.status)); li.append(row, el("span", null, a.text || "")); asks.append(li);
+      }
+    }
+    if (state.activity.length) {
+      const act = $("activity"); act.replaceChildren();
+      for (const e of state.activity.slice(0, 14)) { const li = el("li"); const d = D(e.at); const t = el("time", null, d ? fmtWhen(d) : "earlier"); if (d) t.dateTime = e.at; li.append(t, el("span", null, e.text || "")); act.append(li); }
+    }
+  }
+
+  function render() { renderHeader(); renderRoles(); renderCards(); renderGantt(); renderMilestones(); renderTasks(); renderLists(); }
+
+  $("viewToggle").addEventListener("click", () => {
+    state.table = !state.table; $("ganttWrap").hidden = state.table; $("ganttTable").hidden = !state.table;
+    $("viewToggle").textContent = state.table ? "Show as timeline" : "Show as table"; $("viewToggle").setAttribute("aria-pressed", String(state.table));
+  });
+  try { const s = localStorage.getItem("tracker-ms"); if (s) state.selected = s; } catch (e) {}
+  render();
+  setInterval(() => { renderCards(); renderGantt(); }, 60000);
+
+  (async () => {
+    const db = window.claude && window.claude.use ? await window.claude.use("db") : null;
+    if (!db) { $("offline").hidden = false; $("now").textContent = "Live progress isn't available in this view."; return; }
+    const onErr = () => { $("offline").hidden = false; };
+    const docs = (snap) => snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    db.collection("milestones").orderBy("order").onSnapshot(s => { state.milestones = docs(s); render(); }, onErr);
+    db.collection("tasks").orderBy("order").onSnapshot(s => { state.tasks = docs(s); render(); }, onErr);
+    db.collection("asks").orderBy("order").onSnapshot(s => { state.asks = docs(s); render(); }, onErr);
+    db.doc("status/current").onSnapshot(s => { state.current = s.exists ? s.data() : null; render(); }, onErr);
+    db.doc("status/activity").onSnapshot(s => { const d = s.exists ? s.data() : null; state.activity = (d && Array.isArray(d.entries)) ? d.entries : []; render(); }, onErr);
+    db.doc("project/info").onSnapshot(s => { state.project = s.exists ? s.data() : null; render(); }, onErr);
+  })();
+})();
+</script>
