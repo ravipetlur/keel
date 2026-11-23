@@ -52,7 +52,14 @@ When in doubt, keel picks the smaller size and moves up if the work grows.
 
 ## Tracker
 
-Each M and L task opens a tracker: a claude.ai page pinned to your sidebar, backed by its own small database. It shows who does what, plan against actual for each phase, every unit with who built it and how many review rounds it took, what keel needs from you, and recent activity. Planned dates are fixed when counsel approves the plan; only the expected dates move after that. keel updates it at every state change, so it never falls behind the work.
+Each M and L task opens a tracker: a claude.ai page pinned to your sidebar, backed by its own small database. It is an agent console laid out as a kanban board, with no sprints:
+
+- **Top:** time left to the target, units done, throughput per day, median cycle time, how many things wait on you, and spend.
+- **Project clock:** time used against work done, with a forecast finish.
+- **Agents:** what the planner (Opus), counsel (Fable) and executor (Sonnet) are each doing now, their totals, first-try pass rates, token use per day and cost.
+- **Board:** every unit in lanes (Backlog, Plan + counsel, Build, Review + prove, Done). A card's color says whether you need to act: amber when keel needs your decision, red when an agent is blocked on you, blue while an agent reviews it, neutral while an agent works on it. A "Needs you" panel lists the amber and red cards, oldest first; you answer in the Claude session.
+
+Planned dates are fixed when counsel approves the plan; only the expected dates move after that. keel updates it at every state change, so it never falls behind the work. Opened outside claude.ai, the page shows labeled example data.
 
 If the session has no Artifact tool (for example, Claude Code not signed in to claude.ai), keel writes `tracker: none (<reason>)` and carries on. Ask for one on an S task by saying "track this".
 
