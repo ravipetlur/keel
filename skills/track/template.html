@@ -236,6 +236,7 @@ button:focus-visible{outline:2px solid var(--wait);outline-offset:2px}
   const fmtDur = (ms) => { if (ms == null || ms < 0) return ""; const m = Math.round(ms / 60000); if (m < 60) return `${m}m`; const h = Math.floor(m / 60); return h < 48 ? `${h}h ${m % 60}m` : `${Math.round(h / 24)}d`; };
   const fmtTok = (n) => n == null ? "" : n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; }; // every numeric DB field passes through this before it reaches markup
   const $ = (id) => document.getElementById(id);
   const state = { project: null, milestones: [], tasks: [], asks: [], current: null, activity: [], usage: null };
   let filter = "all";
@@ -366,10 +367,10 @@ button:focus-visible{outline:2px solid var(--wait);outline-offset:2px}
     const build = units().filter((t) => t.milestone === "Build");
     const buildDone = build.filter((t) => t.status === "done");
     const counselRows = byRole("counsel"), counselDone = counselRows.filter((t) => t.status === "done");
-    const avgRounds = counselDone.length ? (counselDone.reduce((a, t) => a + Math.max(1, t.reviewRounds || 1), 0) / counselDone.length).toFixed(1) : "—";
+    const avgRounds = counselDone.length ? (counselDone.reduce((a, t) => a + Math.max(1, num(t.reviewRounds)), 0) / counselDone.length).toFixed(1) : "—";
     const firstPass = buildDone.length ? Math.round(buildDone.filter((t) => !t.reviewRounds).length / buildDone.length * 100) + "%" : "—";
     const rows = [
-      { r: "planner", m: [["units reviewed", String(buildDone.length)], ["sent back", String(build.reduce((a, t) => a + (t.reviewRounds || 0), 0))], ["cost", cost("planner")]] },
+      { r: "planner", m: [["units reviewed", String(buildDone.length)], ["sent back", String(build.reduce((a, t) => a + num(t.reviewRounds), 0))], ["cost", cost("planner")]] },
       { r: "counsel", m: [["plans reviewed", String(counselDone.length)], ["avg rounds", avgRounds], ["cost", cost("counsel")]] },
       { r: "exec", m: [["units built", String(byRole("exec").filter((t) => t.status === "done").length)], ["1st-try pass", firstPass], ["cost", cost("exec")]] }
     ];
@@ -382,7 +383,7 @@ button:focus-visible{outline:2px solid var(--wait);outline-offset:2px}
       return `<div class="agent">
         <div class="who"><span class="glyph" style="background:${R.c}">${R.g}</span><div><b>${R.n}</b><span>${R.m}</span></div></div>
         <div class="doing"><div style="display:flex;gap:6px;align-items:center"><span class="pulse ${act.length ? "" : "idle"}" style="background:${R.c}"></span>${esc(doing)}</div><small>${esc(sub)}</small></div>
-        ${a.m.map(([k, v]) => `<div class="m"><div class="k">${k}</div><b>${v}</b></div>`).join("")}
+        ${a.m.map(([k, v]) => `<div class="m"><div class="k">${k}</div><b>${esc(v)}</b></div>`).join("")}
         ${spark(perDay(state.tasks.filter((t) => roleOf(t.who) === a.r && t.status === "done"), 14), R.hex)}</div>`;
     }).join("");
     const gate = (name, num, den, color) => { const p = den ? Math.round(num / den * 100) : null;
@@ -394,7 +395,7 @@ button:focus-visible{outline:2px solid var(--wait);outline-offset:2px}
 
   /* ---------- needs you + activity ---------- */
   function needItems() {
-    const out = state.tasks.filter(isHuman).map((t) => ({ text: t.question || t.title, sub: `${t.milestone || ""}${t.number ? " #" + t.number : ""} · ${t.title}`, block: t.need === "blocked", since: D(t.waitingSince) ? +D(t.waitingSince) : null }));
+    const out = state.tasks.filter(isHuman).map((t) => ({ text: t.question || t.title, sub: `${t.milestone || ""}${num(t.number) ? " #" + num(t.number) : ""} · ${t.title}`, block: t.need === "blocked", since: D(t.waitingSince) ? +D(t.waitingSince) : null }));
     state.asks.filter((a) => a.status === "now").forEach((a) => out.push({ text: a.text, sub: a.when || "", block: false, since: null }));
     return out.sort((a, b) => (a.since || Infinity) - (b.since || Infinity));
   }
@@ -410,9 +411,11 @@ button:focus-visible{outline:2px solid var(--wait);outline-offset:2px}
 
   /* ---------- board ---------- */
   function checksHtml(c) {
-    if (!c || !c.total) return "";
-    const cells = []; for (let i = 0; i < c.total; i++) cells.push(i < (c.passed || 0) ? "p" : i < (c.passed || 0) + (c.failed || 0) ? "f" : "");
-    return `<span class="checks" title="${c.passed || 0} of ${c.total} checks passing">${cells.map((x) => `<i class="${x}"></i>`).join("")}</span>`;
+    if (!c) return "";
+    const total = Math.min(20, num(c.total)), passed = num(c.passed), failed = num(c.failed);
+    if (!total) return "";
+    const cells = []; for (let i = 0; i < total; i++) cells.push(i < passed ? "p" : i < passed + failed ? "f" : "");
+    return `<span class="checks" title="${passed} of ${total} checks passing">${cells.map((x) => `<i class="${x}"></i>`).join("")}</span>`;
   }
   function holder(t) {
     const r = roleOf(t.who);
@@ -424,15 +427,16 @@ button:focus-visible{outline:2px solid var(--wait);outline-offset:2px}
     const lead = st === "agent" && r ? `<span class="pulse" style="background:${ROLES[r].c}"></span>` : "";
     const since = D(t.waitingSince), started = D(t.startedAt), closed = D(t.closedAt);
     const label = t.status === "fixing" ? "Agent fixing" : ST_LABEL[st];
+    const rr = num(t.reviewRounds), tok = num(t.tokens), no = num(t.number);
     const meta = [
-      t.reviewRounds ? `${t.reviewRounds} rnd` : "",
+      rr ? `${rr} rnd` : "",
       isRunning(t) && started ? `⏱ ${fmtDur(+now() - started)}` : "",
-      t.tokens ? fmtTok(t.tokens) + " tok" : "",
+      tok ? fmtTok(tok) + " tok" : "",
       st === "done" && started && closed ? `took ${fmtDur(closed - started)}` : ""
     ].filter(Boolean).join(" · ");
     return `<article class="card s-${st}" data-st="${st}">
       <div class="st">${lead}${label}${human && since ? ` · ${fmtDur(+now() - since)}` : ""}</div>
-      <div class="id"><span>${esc(t.milestone || "")}${t.number ? " #" + t.number : ""}</span>${checksHtml(t.checks)}</div>
+      <div class="id"><span>${esc(t.milestone || "")}${no ? " #" + no : ""}</span>${checksHtml(t.checks)}</div>
       <h4>${esc(t.title)}</h4>
       ${human && t.question ? `<div class="msg">${esc(t.question)}</div>` : (t.note && st !== "done" ? `<div class="row"><span>${esc(t.note)}</span></div>` : "")}
       ${human && Array.isArray(t.options) && t.options.length ? `<div class="opts">${t.options.map((o) => `<span>${esc(o)}</span>`).join("")}</div>` : ""}
@@ -446,7 +450,7 @@ button:focus-visible{outline:2px solid var(--wait);outline-offset:2px}
       const total = l.k === "done" ? units().filter((t) => t.status === "done").length : cs.length;
       let more = 0;
       if (l.k === "done") { cs.sort((a, b) => (+D(b.closedAt) || 0) - (+D(a.closedAt) || 0)); more = Math.max(0, cs.length - 6); cs = cs.slice(0, 6); }
-      const lim = wip[l.k], ratio = lim ? total / lim : 0;
+      const lim = num(wip[l.k]), ratio = lim ? total / lim : 0;
       return `<section class="lane"><div class="lane-h"><div class="t"><span>${l.n}</span><em>${total}${lim ? " / " + lim : ""}</em></div><div class="who-l">${l.who}</div>
         ${lim ? `<div class="wip"><b style="width:${Math.min(100, ratio * 100)}%;background:${ratio > 1 ? "var(--block)" : ratio >= .75 ? "var(--you)" : "var(--ok)"}"></b></div>` : ""}</div>
         <div class="lane-body">${cs.map(card).join("") || `<div class="more">empty</div>`}${more ? `<div class="more">+ ${more} more done</div>` : ""}</div></section>`;
