@@ -1,6 +1,6 @@
 ---
 name: track
-description: Keeps a live, pinned tracker page for a keel task. It is a claude.ai Artifact backed by its own database, showing plan against actual per phase, the units of work with who built and reviewed each, what the owner needs to do, and recent activity. Opened with every M and L keel task and updated at every state change. Use when a keel task opens, when the user asks for progress, a dashboard or a tracker, or after any task state change while one is open.
+description: Keeps a live, pinned tracker page for a keel task. It is a claude.ai Artifact backed by its own database: an agent console with the project clock, flow metrics, what each agent (planner, counsel, executor) is doing, and a kanban board whose cards are colored by whether the owner must act. Opened with every M and L keel task and updated at every state change. Use when a keel task opens, when the user asks for progress, a dashboard or a tracker, or after any task state change while one is open.
 ---
 
 # Track
@@ -15,17 +15,30 @@ The person who asked for the work follows it on one page they never have to look
 2. Load the `artifact-design` and `artifact-capabilities` skills before publishing. The template already follows the page contract.
 3. Publish with `icon: "chart"`, a one-sentence `description`, `pin: true`, and the `db` capability (viewers read, only the owner writes; take the exact rule syntax from `artifact-capabilities`). Republish the same file path later to keep the URL.
 4. Add `tracker: <url>` to the frontmatter of `.work/<slug>/task.md`. Later sessions on the same task update that page, never a new one.
-5. Seed the database with one `ArtifactData` batch (shapes in section 2): `project/info` with `roles`, one milestone per phase of the task's flow with planned dates, `status/current`, `status/activity`, and any `asks`.
+5. Seed the database with one `ArtifactData` batch (shapes in section 2): `project/info` with `roles`, one milestone per phase of the task's flow with planned dates, `status/current`, `status/activity`, `status/usage` if a budget is known, and any `asks`.
+
+**What the page shows.** A dark agent console laid out as a kanban board, with no sprints. The page reads the role from `who`: Opus is shown as **Planner**, Fable as **Counsel**, Sonnet as **Executor**. Lanes come from each task row:
+
+| Lane | Rows |
+|---|---|
+| Backlog | `status: queued` |
+| Plan + counsel | not done, `milestone` Frame, Shape or Debug |
+| Build | Build rows that are `building`, `fixing` or `waiting` |
+| Review + prove | `status: review`, or not done with `milestone` Prove, Ship or Learn |
+| Done | `status: done` (the six most recent are shown) |
+
+Card color says whether the owner must act: `waiting` is amber (**needs your decision**), or red (**blocked on you**) when `need: "blocked"`; `review` is blue (agent reviewing); `building` and `fixing` are neutral with a pulse (agent working); `queued` is dashed. Every `waiting` row, and every ask with `status: now`, also shows in the Needs you panel, oldest `waitingSince` first. Opened outside claude.ai, the page shows labeled example data.
 
 ## 2. Data model (exact field names; the page depends on them)
 
 | Document | Fields |
 |---|---|
-| `project/info` | `name`, `targetLabel` (e.g. "PR"), `plannedStart`, `plannedEnd`, `expectedEnd`, `baselineNote` (one sentence: what "planned" means), `roles` (see below) |
+| `project/info` | `name`, `targetLabel` (e.g. "PR"), `plannedStart`, `plannedEnd`, `expectedEnd`, `baselineNote` (one sentence: what "planned" means), `roles` (see below), optional `wip` (`{plan, build, review}` lane limits; defaults 3, 4, 4) |
+| `status/usage` | optional: `spendUsd`, `budgetUsd`, `byRole: {planner, counsel, executor}` each `{tokens, costUsd}`, `days: [{day, planner, counsel, executor}]` (tokens per role per UTC day, about 14 kept) |
 | `status/current` | `phase` ("Build"), `headline` (plain words: what is happening now), `milestoneEta`, `askNow` (only while the user must act; it shows as the NEEDS YOU box), `updatedAt` |
 | `status/activity` | `entries: [{at, text}]`, newest first, about 14 kept |
 | `milestones/m<N>` | `order`, `code` (the phase name: "Frame", "Shape", "Build", "Prove", "Ship", "Learn"), `title` (what the phase delivers, e.g. "Plan approved", "Units built and reviewed"; never the phase name again), `summary`, `status` (`done` / `active` / `planned` / `later`), `plannedStart`, `plannedEnd`, `actualStart`, `actualEnd`, `expectedEnd` |
-| `tasks/m<N>-t<NN>` | `order` (N×100 + number), `milestone` (the phase code), `number` (0 is the plan row: shown, not counted), `title`, `note` (what it delivers), `who`, `status` (`queued` / `building` / `review` / `fixing` / `waiting` / `done`, nothing else), `plannedAt`, `startedAt`, `closedAt`, `expectedAt`, `expectedNote`, `reviewRounds` |
+| `tasks/m<N>-t<NN>` | `order` (N×100 + number), `milestone` (the phase code), `number` (0 is the plan row: shown, not counted), `title`, `note` (what it delivers), `who`, `status` (`queued` / `building` / `review` / `fixing` / `waiting` / `done`, nothing else), `plannedAt`, `startedAt`, `closedAt`, `expectedAt`, `expectedNote`, `reviewRounds`; optional: `checks` (`{passed, failed, total}` from the unit's last check run), `tokens`; while `waiting`: `need` (`decision` or `blocked`), `question` (one or two plain sentences: what keel needs and why), `options` (short answer labels), `waitingSince` |
 | `asks/a<N>` | `order`, `status` (`now` / `later` / `done`), `when`, `text` |
 
 `roles` is the three rows from the roles table in `../keel/SKILL.md`, each `{role, model, does}`: Responsible / Opus 5.5 / owns the plan, reviews every unit, proves and ships; Counsel / Fable 5.2 / reviews every plan, approves or improves it; Builder / Sonnet 5.5 / implements each unit.
@@ -57,7 +70,9 @@ Times are UTC ISO strings from `date -u +%FT%TZ`. A `planned*` field is set once
 | Unit back for Opus review | `status: review` |
 | Opus sends it back | `status: fixing`, `reviewRounds` + 1 |
 | Unit accepted and committed | `status: done`, `closedAt` (exact `date -u`); activity line; re-forecast later `expectedAt` and `expectedEnd` if the pace changed |
-| User needed | the row `waiting`; an ask `now`; `askNow` (clear it after, mark the ask `done`) |
+| Unit check run | `checks` with the real counts |
+| User needed | the row `waiting` with `need`, `question`, `options`, `waitingSince`; an ask `now`; `askNow` (after the answer: the row back to its working status, clear `need`, `question`, `options`, `askNow`, mark the ask `done`) |
+| Usage known (end of each phase, at least) | `status/usage` totals and today's `days` entry |
 | PR opened, task closed | the Ship and Learn rows; the PR link in an activity line; `project/info.expectedEnd` set to the actual end |
 | Every change | `status/current.headline`, `milestoneEta`, `updatedAt` |
 
