@@ -59,7 +59,9 @@ Each M and L task opens a tracker: a claude.ai page pinned to your sidebar, back
 - **Agents:** what the planner (Opus), counsel (Fable) and executor (Sonnet) are each doing now, their totals, first-try pass rates, token use per day and cost.
 - **Board:** every unit in lanes (Backlog, Plan + counsel, Build, Review + prove, Done). A card's color says whether you need to act: amber when keel needs your decision, red when an agent is blocked on you, blue while an agent reviews it, neutral while an agent works on it. A "Needs you" panel lists the amber and red cards, oldest first; you answer in the Claude session.
 
-Planned dates are fixed when counsel approves the plan; only the expected dates move after that. keel updates it at every state change, so it never falls behind the work. Opened outside claude.ai, the page shows labeled example data.
+Planned dates are fixed when counsel approves the plan; only the expected dates move after that. Opened outside claude.ai, the page shows labeled example data.
+
+Updates don't depend on the agent remembering. keel's `track` hook records every dispatch, return, commit and phase change as it happens. Before a builder starts, its owner and lease are written to the tracker, and the agent can't finish a turn while the tracker is behind. A builder or session that goes quiet (a usage limit, a closed session) shows as **no signal** once its lease runs out. Another session can then claim the unit. See [How keel tracks agent work](tracking.md).
 
 If the session has no Artifact tool (for example, Claude Code not signed in to claude.ai), keel writes `tracker: none (<reason>)` and carries on. Ask for one on an S task by saying "track this".
 
@@ -80,6 +82,7 @@ If the session has no Artifact tool (for example, Claude Code not signed in to c
 | `decisions.tsv` | Choices made without asking, and how to reverse each |
 | `gates.tsv` | Skips and suppressions added, each needing a reason |
 | `evidence/` | Proof that the change works |
+| `events.jsonl` | Everything the `track` hook saw, one event per line ([details](tracking.md)) |
 | `.work/learnings.md` | Lessons across all tasks |
 
 Next: [Hooks](hooks.md).

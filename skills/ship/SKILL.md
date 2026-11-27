@@ -10,7 +10,7 @@ Goal: a PR a reviewer can trust in two minutes. Set `phase: ship`.
 ## 1. Commits
 
 - Work on a branch, never directly on the default branch.
-- Rebase into small commits in the order of the units in `shape.md`. Each commit builds and passes its own check.
+- Rebase into small commits in the order of the units in `shape.md`. Each commit builds and passes its own check. Keep each unit's `Keel-Unit:` trailer.
 - For bug fixes, the commit that adds the failing regression test comes before the commit with the fix, when that was cheap to do.
 - Conventional commit messages (`feat:`, `fix:`, `refactor:` and so on). Follow the repo's own convention if it has one.
 

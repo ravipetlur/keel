@@ -13,6 +13,8 @@ keel is a small set of Markdown files and shell scripts. Changing it means editi
 | The brief, shape or PR layout | `skills/frame/brief.md`, `skills/shape/shape.md`, `skills/ship/PR.md` |
 | What gets blocked or asked about | `hooks/careful.sh` |
 | What counts as weakening a gate | the `patterns` list in `hooks/gate-guard.sh` |
+| Which events are logged, what the dispatch gate and Stop check require | `hooks/track.sh` (its `SYNC` list names the events that must reach the tracker) |
+| Lease length and claim rules | sections 4 and 5 of `skills/track/SKILL.md` |
 
 After an edit, run `/plugin` and update keel, or reinstall it, so Claude Code picks up the change.
 
@@ -36,3 +38,5 @@ After an edit, run `/plugin` and update keel, or reinstall it, so Claude Code pi
 **Use a different second model for review.** `review` tries the `codex` CLI first, then a subagent on a different model, then fresh subagents. Reorder that list to suit what you have.
 
 **Track S tasks too.** Change the "When" line in `skills/track/SKILL.md`.
+
+**Quieter tracking.** Set `KEEL_BEAT_SECS=300` for fewer heartbeats, `KEEL_TRACK_GATE=off` to keep the event log without the dispatch gate and Stop check, or `KEEL_TRACK=off` to turn the `track` hook off. These go in the `env` block of your Claude Code settings.

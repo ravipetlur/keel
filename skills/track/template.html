@@ -113,6 +113,9 @@ button:focus-visible{outline:2px solid var(--wait);outline-offset:2px}
 .card.s-wait{--st:color-mix(in srgb,var(--wait) 45%,var(--line2))}
 .card.s-wait .st{color:var(--wait)}
 .card.s-queued{border-style:dashed}
+.card.s-stale{--st:var(--muted);border-style:dashed;background:var(--panel)}
+.card.s-stale .st{color:var(--fg)}
+.chip.warn{color:var(--you);border-color:color-mix(in srgb,var(--you) 45%,transparent)}
 .card.s-done{background:var(--panel)}
 .card.s-done h4{color:var(--muted)}
 .card.s-done .st{color:var(--ok)}
@@ -195,6 +198,7 @@ button:focus-visible{outline:2px solid var(--wait);outline-offset:2px}
       <span><i style="background:var(--block)"></i>blocked on you</span>
       <span><i style="background:var(--wait)"></i>agent reviewing</span>
       <span><i style="background:var(--line2)"></i>agent working</span>
+      <span><i style="border:1px dashed var(--muted);background:transparent"></i>no signal, lease ran out</span>
     </div>
     <div class="filters" role="group" aria-label="Filter cards">
       <button id="f-all" data-f="all" aria-pressed="true">All</button>
@@ -226,7 +230,8 @@ button:focus-visible{outline:2px solid var(--wait);outline-offset:2px}
     { k: "done", n: "Done", who: "accepted and committed" }
   ];
   const DEFAULT_WIP = { plan: 3, build: 4, review: 4 };
-  const ST_LABEL = { you: "Needs your decision", block: "Blocked on you", wait: "Agent reviewing", agent: "Agent working", queued: "Queued", done: "Done" };
+  const ST_LABEL = { you: "Needs your decision", block: "Blocked on you", wait: "Agent reviewing", agent: "Agent working", stale: "No signal", queued: "Queued", done: "Done" };
+  const QUIET_MS = 30 * 60000; // tracker not synced for this long while units run: warn in the header
   const DAY = 86400000, now = () => new Date();
   const D = (v) => { if (!v) return null; const d = new Date(v); return isNaN(d) ? null : d; };
   const day0 = (d) => { const c = new Date(d); c.setHours(0, 0, 0, 0); return c; };
@@ -250,15 +255,18 @@ button:focus-visible{outline:2px solid var(--wait);outline-offset:2px}
     if (["Prove", "Ship", "Learn"].includes(t.milestone) || t.status === "review") return "review";
     return "build";
   }
+  const isHuman = (t) => t.status === "waiting";
+  const isRunning = (t) => ["building", "fixing", "review"].includes(t.status);
+  /* A running unit whose lease has passed has gone quiet: worked out here, never stored. */
+  const leaseOut = (t) => { const l = D(t.leaseUntil); return isRunning(t) && !!l && +l < +now(); };
   function stOf(t) {
     if (t.status === "waiting") return t.need === "blocked" ? "block" : "you";
+    if (leaseOut(t)) return "stale";
     if (t.status === "review") return "wait";
     if (t.status === "building" || t.status === "fixing") return "agent";
     if (t.status === "done") return "done";
     return "queued";
   }
-  const isHuman = (t) => t.status === "waiting";
-  const isRunning = (t) => ["building", "fixing", "review"].includes(t.status);
 
   /* ---------- header + stats ---------- */
   function renderHeader() {
@@ -267,12 +275,14 @@ button:focus-visible{outline:2px solid var(--wait);outline-offset:2px}
     $("now").innerHTML = c.headline ? `${c.phase ? `<b>${esc(c.phase)} · </b>` : ""}${esc(c.headline)}` : "Waiting for the first update.";
     const asks = needItems();
     $("youChip").hidden = !asks.length; $("youChip").textContent = `${asks.length} need${asks.length === 1 ? "s" : ""} you`;
-    const run = state.tasks.filter(isRunning).length;
-    $("liveTxt").textContent = run ? `${run} agent${run === 1 ? "" : "s"} running` : "agents idle";
+    const quiet = state.tasks.filter(leaseOut).length, run = state.tasks.filter(isRunning).length - quiet;
+    $("liveTxt").textContent = (run ? `${run} agent${run === 1 ? "" : "s"} running` : "agents idle") + (quiet ? ` · ${quiet} no signal` : "");
     $("liveChip").querySelector("i").classList.toggle("idle", !run);
     const end = D(p.expectedEnd) || D(p.plannedEnd);
     $("targetChip").textContent = end ? `${(p.targetLabel || "target").toLowerCase()} ${fmtDay(end)}` : "no target yet";
-    $("stamp").textContent = c.updatedAt ? `updated ${fmtWhen(D(c.updatedAt))}` : "";
+    const upd = D(c.updatedAt), behind = !!upd && run + quiet > 0 && +now() - upd > QUIET_MS;
+    $("stamp").textContent = !upd ? "" : behind ? `last sync ${fmtDur(+now() - upd)} ago · may be behind` : `updated ${fmtWhen(upd)}`;
+    $("stamp").classList.toggle("warn", behind);
   }
   function throughput7() {
     const since = +now() - 7 * DAY;
@@ -424,18 +434,22 @@ button:focus-visible{outline:2px solid var(--wait);outline-offset:2px}
   }
   function card(t) {
     const st = stOf(t), r = roleOf(t.who), human = isHuman(t);
-    const lead = st === "agent" && r ? `<span class="pulse" style="background:${ROLES[r].c}"></span>` : "";
-    const since = D(t.waitingSince), started = D(t.startedAt), closed = D(t.closedAt);
-    const label = t.status === "fixing" ? "Agent fixing" : ST_LABEL[st];
-    const rr = num(t.reviewRounds), tok = num(t.tokens), no = num(t.number);
+    const lead = st === "agent" && r ? `<span class="pulse" style="background:${ROLES[r].c}"></span>` : st === "stale" ? `<span aria-hidden="true">○</span>` : "";
+    const since = D(t.waitingSince), started = D(t.startedAt), closed = D(t.closedAt), lease = D(t.leaseUntil);
+    const label = t.status === "fixing" && st === "agent" ? "Agent fixing" : ST_LABEL[st];
+    const rr = num(t.reviewRounds), tok = num(t.tokens), no = num(t.number), att = num(t.attempt);
+    const quietFor = st === "stale" ? ` · ${fmtDur(+now() - lease)}` : "";
     const meta = [
       rr ? `${rr} rnd` : "",
+      att > 1 ? `attempt ${att}` : "",
+      t.assignedBy === "pull" && isRunning(t) ? "picked up" : "",
+      isRunning(t) && lease && st !== "stale" ? `lease ${fmtDur(lease - now())}` : "",
       isRunning(t) && started ? `⏱ ${fmtDur(+now() - started)}` : "",
       tok ? fmtTok(tok) + " tok" : "",
       st === "done" && started && closed ? `took ${fmtDur(closed - started)}` : ""
     ].filter(Boolean).join(" · ");
     return `<article class="card s-${st}" data-st="${st}">
-      <div class="st">${lead}${label}${human && since ? ` · ${fmtDur(+now() - since)}` : ""}</div>
+      <div class="st">${lead}${label}${human && since ? ` · ${fmtDur(+now() - since)}` : ""}${quietFor}</div>
       <div class="id"><span>${esc(t.milestone || "")}${no ? " #" + no : ""}</span>${checksHtml(t.checks)}</div>
       <h4>${esc(t.title)}</h4>
       ${human && t.question ? `<div class="msg">${esc(t.question)}</div>` : (t.note && st !== "done" ? `<div class="row"><span>${esc(t.note)}</span></div>` : "")}
@@ -476,8 +490,9 @@ button:focus-visible{outline:2px solid var(--wait);outline-offset:2px}
     add("Shape", 0, "Plan and counsel review", "Fable", "done", { reviewRounds: 2, startedAt: iso(-9 * DAY), closedAt: iso(-8.6 * DAY) });
     const doneTitles = ["Shape command: turn a request into acceptance criteria", "Model roles: planner, counsel, executor", "Hook: block commits on the default branch", "Stop hook: require a tracker line", "Learn skill: save project conventions", "Counsel loop: record each round", "Prove: attach test output to the PR", "Frame: brief in 15 lines or fewer"];
     doneTitles.forEach((title, i) => add("Build", i + 1, title, "Sonnet", "done", { reviewRounds: i % 3 === 0 ? 1 : 0, startedAt: iso(-(8 - i) * DAY - 6 * h), closedAt: iso(-(8 - i) * DAY + (i % 2 ? 0 : 2 * h)), tokens: 300000 + i * 90000, checks: { passed: 4, total: 4 } }));
-    add("Build", 9, "Debug skill: reproduce failing command in isolation", "Sonnet", "building", { startedAt: iso(-0.5 * h), tokens: 1400000, checks: { passed: 3, total: 5 } });
-    add("Build", 10, "Review agent: flag missing tests on changed files", "Sonnet", "fixing", { reviewRounds: 1, startedAt: iso(-2 * h), tokens: 960000, checks: { passed: 4, failed: 1, total: 6 } });
+    add("Build", 9, "Debug skill: reproduce failing command in isolation", "Sonnet", "building", { startedAt: iso(-0.5 * h), leaseUntil: iso(1.1 * h), attempt: 1, tokens: 1400000, checks: { passed: 3, total: 5 } });
+    add("Build", 10, "Review agent: flag missing tests on changed files", "Sonnet", "fixing", { reviewRounds: 1, startedAt: iso(-2 * h), leaseUntil: iso(0.6 * h), attempt: 2, assignedBy: "pull", tokens: 960000, checks: { passed: 4, failed: 1, total: 6 } });
+    add("Build", 15, "Tracker: show each unit's lease on its card", "Sonnet", "building", { startedAt: iso(-2.4 * h), leaseUntil: iso(-0.3 * h), attempt: 1, tokens: 720000, checks: { passed: 1, total: 3 } });
     add("Build", 11, "Install script for the plugin marketplace", "Sonnet", "waiting", { need: "blocked", waitingSince: iso(-0.9 * h), startedAt: iso(-3 * h), question: "Publishing needs a registry token the executor can't reach. Add it to the environment, or skip the publish step.", options: ["Token added", "Skip publish"], checks: { passed: 2, failed: 1, total: 3 } });
     add("Build", 12, "README quick start and command reference", "Sonnet", "review", { startedAt: iso(-4 * h), tokens: 410000, checks: { passed: 2, total: 2 } });
     add("Build", 13, "Ship command: tag release and write changelog", "Sonnet", "queued", {});
@@ -490,7 +505,7 @@ button:focus-visible{outline:2px solid var(--wait);outline-offset:2px}
       project: { name: "keel/tracker", targetLabel: "PR", plannedStart: iso(-10 * DAY), plannedEnd: iso(5 * DAY), expectedEnd: iso(4 * DAY) },
       current: { phase: "Build", headline: "Two executors running, one unit waiting on a token", updatedAt: iso(-12000) },
       tasks: T, asks: [], milestones: [],
-      activity: [{ at: iso(-0.4 * h), text: "Planner sent a unit back: one missing test" }, { at: iso(-0.9 * h), text: "Executor blocked: registry token missing" }, { at: iso(-2 * h), text: "Unit accepted and committed: prove output on the PR" }, { at: iso(-8.6 * DAY), text: "Counsel approved the plan in round 2" }],
+      activity: [{ at: iso(-0.25 * h), text: "Picked up the review agent unit after the previous session went quiet" }, { at: iso(-0.4 * h), text: "Planner sent a unit back: one missing test" }, { at: iso(-0.9 * h), text: "Executor blocked: registry token missing" }, { at: iso(-2 * h), text: "Unit accepted and committed: prove output on the PR" }, { at: iso(-8.6 * DAY), text: "Counsel approved the plan in round 2" }],
       usage: { spendUsd: 64, budgetUsd: 120, byRole: { planner: { costUsd: 22 }, counsel: { costUsd: 9 }, executor: { costUsd: 33 } }, days }
     };
   }

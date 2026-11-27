@@ -25,7 +25,7 @@ If this session is not running on Opus 5.5, say so in the sizing line and ask th
 
 Apply each improvement, or reject it with a one-line reason, then send the revised plan back. Build starts only on **Approved**. After two rounds without approval, take the open points to the user. Record each round in the plan's `Counsel` section, ending in the line `Counsel verdict: approved (round N)`.
 
-**Builder brief.** Give each `sonnet` subagent the unit, its check, the approved plan, the files it may touch, and principles 1, 3 and 7. It returns the diff summary and the check's real output. Its "done" is a claim (principle 6): you read the diff, re-run the check, and either commit it or send it back with what to fix.
+**Builder brief.** Give each `sonnet` subagent the unit, its check, the approved plan, the files it may touch, and principles 1, 3 and 7. On a tracked task, the brief carries the line `keel-unit: <tracker task id>` (for example `keel-unit: m3-t02`), and the builder ends its report with the same line. That's how keel's hooks tie the builder's work to its card. It returns the diff summary and the check's real output. Its "done" is a claim (principle 6): you read the diff, re-run the check, and either commit it or send it back with what to fix.
 
 ## 1. Size it
 
@@ -53,7 +53,7 @@ When unsure between two sizes, take the smaller one and move up if the work grow
    ```
 3. Write the slug to `.work/current`.
 4. Make sure `.work/` is listed in `.git/info/exclude` so it never shows up in diffs. For an L task the user may ask to commit it instead.
-5. For M and L, open the tracker with `../track/SKILL.md`: a pinned claude.ai page the user follows the task on. Its URL goes into `task.md` as `tracker:`. Update it at every state change from here to `done`.
+5. For M and L, open the tracker with `../track/SKILL.md`: a pinned claude.ai page the user follows the task on. Its URL goes into `task.md` as `tracker:`. Update it at every state change from here to `done`. The `track` hook logs each change and blocks your Stop while the tracker is behind.
 
 Update `phase:` in `task.md` every time you enter a phase (`frame`, `shape`, `debug`, `build`, `prove`, `ship`, `learn`, `done`), and the tracker with it. keel's Stop hook reads it. On M and L tasks it will not let you finish in `build` or later without a `tracker:` line and a counsel approval (in `shape.md`, or in `task.md` when there is no shape), or in `prove`, `ship` or `done` while `.work/<slug>/evidence/` is empty.
 
@@ -70,6 +70,8 @@ S tasks, and any task that rejoins at build from debug without a `shape.md`, wri
 There is no separate build skill. Build like this:
 
 - Work through the units from `shape.md` (or the single unit in the S plan) one at a time. Each unit goes to a builder (section 0) and ends in a check. You review the diff, re-run the check, and commit before starting the next.
+- On a tracked task, record the unit's owner in the tracker before you dispatch it (`../track/SKILL.md`, section 4); the `track` hook refuses the dispatch otherwise. Commit each accepted unit with a `Keel-Unit: <id>` trailer, so the commit closes its card.
+- When a session starts with a `[keel track]` note listing open units or a tracker that is behind, deal with that first: sync, then resume or claim stalled units (`../track/SKILL.md`, section 5).
 - When a test is cheap and local, the builder writes the failing test first.
 - Units that touch the same files go to one builder in order. Run builders in parallel only on units with no files in common.
 - Run long builds and test suites in the background and keep working while they run.

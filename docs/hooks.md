@@ -1,6 +1,6 @@
 # Hooks
 
-Skills are instructions the model can drift from. Hooks are scripts that run every time, so keel uses them for the rules that matter most. There are three.
+Skills are instructions the model can drift from. Hooks are scripts that run every time, so keel uses them for the rules that matter most. There are four.
 
 ## careful
 
@@ -48,9 +48,28 @@ The agent is told what's missing and how to fix it.
 
 If the agent is only pausing to ask you something, its second attempt to stop always goes through, so this hook can never trap it in a loop. S tasks are never blocked.
 
+## track
+
+**Runs:** on every tool call, when a builder is dispatched or returns, and when a session starts, compacts, ends a turn, fails or ends. It is active only while a keel task is open.
+
+It keeps the tracker current without relying on the agent to remember. Everything it sees goes to `.work/<task>/events.jsonl`, and on top of that:
+
+| When | It does |
+|---|---|
+| A builder is dispatched with `keel-unit: <id>` | Refuses the dispatch unless the unit's owner was written to the tracker since its last dispatch |
+| An untagged Sonnet builder is dispatched in build | Reminds the agent to tag the unit |
+| The agent tries to finish a turn | Blocks while board changes (dispatches, returns, commits, phase changes, counsel approval) have not reached the tracker, and names them |
+| A session starts, resumes or compacts | Tells the agent its session id, the open units with their leases, and what the tracker is missing |
+
+The dispatch gate and the Stop check arm only after the hook has seen one write to the task's tracker, so a setup where those writes are invisible to hooks is never blocked. A second stop always goes through, as with evidence-stop. With `tracker: none`, it only logs.
+
+The whole design is in [How keel tracks agent work](tracking.md).
+
 ## Turning them off
 
-The hooks come with the plugin. To turn all of them off, disable the plugin with `/plugin`. gate-guard and evidence-stop are already quiet whenever no keel task is open. To end a task early, delete `.work/current`.
+The hooks come with the plugin. To turn all of them off, disable the plugin with `/plugin`. gate-guard, evidence-stop and track are already quiet whenever no keel task is open. To end a task early, delete `.work/current`.
+
+For track alone, set `KEEL_TRACK=off` (no logging at all) or `KEEL_TRACK_GATE=off` (it keeps logging but never refuses or blocks) in the `env` block of your Claude Code settings.
 
 ## Testing them
 
