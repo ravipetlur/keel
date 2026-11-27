@@ -15,7 +15,8 @@ cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 root=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null) || root="$cwd"
 [ -f "$root/.work/current" ] || exit 0
 slug=$(tr -d '[:space:]' < "$root/.work/current")
-[ -n "$slug" ] || exit 0
+# .work/ can arrive inside a cloned repo: accept only a plain task name, and never write through a link.
+case "$slug" in ''|.|..|*[!A-Za-z0-9_.-]*) exit 0 ;; esac
 
 case "$file" in
   *.md|*.markdown|*.txt|*.tsv|"$root"/.work/*) exit 0 ;;
@@ -31,6 +32,7 @@ rel=${file#"$root"/}
 before=$(git -C "$root" show "HEAD:$rel" 2>/dev/null || true)
 
 log="$root/.work/$slug/gates.tsv"
+for p in "$root/.work" "$root/.work/$slug" "$log"; do [ -L "$p" ] && exit 0; done
 mkdir -p "$root/.work/$slug"
 found=()
 while IFS=$'\t' read -r label regex; do

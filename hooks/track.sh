@@ -25,9 +25,13 @@ IFS=$'\x1f' read -r event cwd sid aid atype tool active source reason trigger <<
 root=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null) || root="$cwd"
 [ -f "$root/.work/current" ] || exit 0
 slug=$(tr -d '[:space:]' < "$root/.work/current")
+# .work/ can arrive inside a cloned repo, so never follow a link planted there: the slug must
+# be a plain name, and nothing this hook writes to may be a symbolic link.
+case "$slug" in ''|.|..|*[!A-Za-z0-9_.-]*) exit 0 ;; esac
 dir="$root/.work/$slug"; task="$dir/task.md"
-[ -n "$slug" ] && [ -f "$task" ] || exit 0
+[ -f "$task" ] || exit 0
 log="$dir/events.jsonl"; st="$dir/.track"
+for p in "$root/.work" "$dir" "$st" "$log"; do [ -L "$p" ] && exit 0; done
 mkdir -p "$st" 2>/dev/null || exit 0
 
 ts=$(date -u +%Y-%m-%dT%H:%M:%SZ); epoch=$(date +%s)
@@ -43,6 +47,7 @@ tracker_id=$(art_id "$tracker")
 SYNC='["unit.dispatched","unit.returned","unit.committed","phase.changed","counsel.approved"]'
 
 safe() { printf '%s' "$1" | tr -c 'A-Za-z0-9_.-' '_'; }
+put() { [ -L "$1" ] || printf '%s\n' "$2" > "$1" 2>/dev/null; } # write a state file, never through a link
 field() { printf '%s' "$input" | jq -r "$1 // empty" 2>/dev/null; }
 emit() { # type, unit ("" for none), data (JSON object, optional)
   local d=${3:-}; [ -n "$d" ] || d='{}'
@@ -71,7 +76,7 @@ check_files() { # phase changes and counsel approval, read from the task's own f
   ph=$(phase_now); was=$(cat "$st/phase" 2>/dev/null || true)
   if [ -n "$ph" ] && [ "$ph" != "$was" ]; then
     emit phase.changed "" "$(jq -cn --arg p "$ph" '{phase:$p}')"
-    printf '%s\n' "$ph" > "$st/phase"
+    put "$st/phase" "$ph"
   fi
   for f in "$dir/shape.md" "$task"; do
     grep -qiE '^Counsel verdict:[[:space:]]*approved' "$f" 2>/dev/null && { file=${f##*/}; break; }
@@ -79,7 +84,7 @@ check_files() { # phase changes and counsel approval, read from the task's own f
   if [ -n "$file" ]; then
     if [ "$(cat "$st/counsel" 2>/dev/null)" != approved ]; then
       emit counsel.approved "" "$(jq -cn --arg f "$file" '{file:$f}')"
-      echo approved > "$st/counsel"
+      put "$st/counsel" approved
     fi
   else
     rm -f "$st/counsel"
@@ -91,7 +96,7 @@ beat() { # at most one heartbeat per agent per $beat_secs
   f="$st/beat-$(safe "$ag")"; last=$(cat "$f" 2>/dev/null || echo 0)
   case "$last" in ''|*[!0-9]*) last=0 ;; esac
   [ $((epoch - last)) -ge "$beat_secs" ] || return 0
-  printf '%s\n' "$epoch" > "$f"
+  put "$f" "$epoch"
   emit heartbeat "$(cat "$st/agent-$(safe "$ag")" 2>/dev/null || true)"
 }
 
@@ -138,7 +143,7 @@ agent_post() { # ties the new subagent's id to its unit; nudges about untagged b
     since_dispatch "$unit" unit.returned || emit unit.returned "$unit"
     return 0
   fi
-  printf '%s\n' "$unit" > "$st/agent-$(safe "$agid")"
+  put "$st/agent-$(safe "$agid")" "$unit"
   # A foreground builder has already stopped by now, and its SubagentStop could not name the unit.
   if events | jq -es --arg a "$agid" 'any(.[]; .type == "agent.returned" and .agent == $a)' >/dev/null 2>&1 \
      && ! events | jq -es --arg a "$agid" --arg u "$unit" 'any(.[]; .type == "unit.returned" and .agent == $a and .unit == $u)' >/dev/null 2>&1; then
@@ -180,7 +185,7 @@ tracker_write() { # a write to this task's tracker: log it, and any owner it rec
     # A new owner is an assignee with a new assignedAt; a lease extension or a resent assignee is not.
     if [ "$coll" = tasks ] && [ "$has" = 1 ] && [ -n "$at" ] && { [ "$op" = set ] || [ "$op" = update ]; } \
        && [ "$at" != "$(cat "$st/assigned-$(safe "$doc")" 2>/dev/null)" ]; then
-      printf '%s\n' "$at" > "$st/assigned-$(safe "$doc")"
+      put "$st/assigned-$(safe "$doc")" "$at"
       emit unit.assigned "$doc" "$(jq -cn --arg l "$lease" --arg b "$by" --arg w "$at" '{assignedAt:$w} + (if $l == "" then {} else {leaseUntil:$l} end) + (if $b == "" then {} else {by:$b} end)')"
     fi
   done <<< "$entries"
@@ -193,7 +198,7 @@ commit_check() { # a new commit; Keel-Unit trailers name the units it completes
   line=$(git -C "$root" log -1 --format='%H%x1f%(trailers:key=Keel-Unit,valueonly,separator=%x2C)%x1f%s' 2>/dev/null) || return 0
   IFS=$'\x1f' read -r sha units subj <<< "$line"
   [ -n "$sha" ] && [ "$sha" != "$(cat "$st/last-commit" 2>/dev/null)" ] || return 0
-  printf '%s\n' "$sha" > "$st/last-commit"
+  put "$st/last-commit" "$sha"
   data=$(jq -cn --arg c "${sha:0:12}" --arg s "${subj:0:120}" '{commit:$c, subject:$s}')
   if [ -z "$units" ]; then emit commit "" "$data"; return 0; fi
   printf '%s\n' "$units" | tr ',' '\n' | while read -r u; do [ -z "$u" ] || emit unit.committed "$u" "$data"; done
@@ -220,7 +225,7 @@ open_units() { # units dispatched since their last commit, with their lease stat
 
 session_start() {
   emit session.started "" "$(jq -cn --arg s "$source" '{source:$s}')"
-  [ -f "$st/last-commit" ] || git -C "$root" rev-parse HEAD > "$st/last-commit" 2>/dev/null || rm -f "$st/last-commit"
+  [ -e "$st/last-commit" ] || put "$st/last-commit" "$(git -C "$root" rev-parse HEAD 2>/dev/null)"
   local ctx open list
   ctx="[keel track] Task '$slug' is open. This session's id is $sess: write it as assignee.session when you record an owner in the tracker."
   if [ -n "$tracker" ]; then

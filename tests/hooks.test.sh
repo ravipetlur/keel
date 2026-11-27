@@ -217,5 +217,21 @@ check "track: stop failure logged"       'usage limit'   "$(grep '"type":"sessio
 trk SessionEnd '{"reason":"other"}'
 check "track: session end logged"        '1'             "$(ev '"type":"session.ended"')"
 
+# Links planted in a cloned repo's .work/ are never followed
+outside="$tmp/outside"; mkdir -p "$outside"; : > "$outside/rc"
+mkdir -p "$tr_repo/.work/t3"; printf 't3\n' > "$tr_repo/.work/current"
+printf -- '---\nsize: M\nphase: build\n---\n# goal\n' > "$tr_repo/.work/t3/task.md"
+ln -s "$outside/rc" "$tr_repo/.work/t3/events.jsonl"
+trk SessionStart '{"source":"startup"}' >/dev/null; trk PostToolUse '{"tool_name":"Bash","tool_input":{"command":"ls"}}'
+check "track: symlinked log not followed" ''              "$(cat "$outside/rc")"
+rm "$tr_repo/.work/t3/events.jsonl"; ln -s "$outside" "$tr_repo/.work/t3/.track"
+trk PostToolUse '{"tool_name":"Bash","tool_input":{"command":"ls"}}'
+check "track: symlinked state dir not followed" ''        "$(ls "$outside" | grep -v '^rc$')"
+printf '../../outside\n' > "$tr_repo/.work/current"
+check "track: path in the slug refused" ''               "$(trk SessionStart '{"source":"startup"}'; ls "$outside" | grep -v '^rc$')"
+printf 't1\n' > "$tmp/.work/current"; rm -f "$tmp/.work/t1/gates.tsv"; ln -s "$outside/rc" "$tmp/.work/t1/gates.tsv"
+printf 'it.skip("b", () => {})\n' > "$tmp/a.test.ts"; edit "$tmp/a.test.ts" >/dev/null
+check "gate: symlinked gates.tsv not followed" ''         "$(cat "$outside/rc")"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
