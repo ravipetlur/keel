@@ -119,6 +119,7 @@ check "track: nothing written without a task" ''         "$(ls "$tr_repo/.work" 
 mkdir -p "$tr_repo/.work/t2"; printf 't2\n' > "$tr_repo/.work/current"; ttask build
 check "track: session start names the session" 'sess1234' "$(trk SessionStart '{"source":"startup"}')"
 check "track: session start logged"      '1'             "$(ev '"type":"session.started"')"
+check "track: starting phase recorded at session start" '1' "$(ev '"type":"phase.changed","session":"sess1234","agent":"main","data":{"phase":"build"}')"
 check "track: gate not armed before a tracker write" '' "$(dispatch m1-t01)"
 check "track: unarmed dispatch logged"   '1'             "$(ev '"type":"unit.dispatched"')"
 check "track: owner write is quiet"      ''              "$(owner m1-t01 "$FUTURE")"
@@ -216,6 +217,17 @@ trk StopFailure '{"error":"rate_limit: usage limit reached"}'
 check "track: stop failure logged"       'usage limit'   "$(grep '"type":"session.failed"' "$TLOG")"
 trk SessionEnd '{"reason":"other"}'
 check "track: session end logged"        '1'             "$(ev '"type":"session.ended"')"
+
+# A builder's own transcript (beside the session's, first line = its brief) names its unit
+tx="$tmp/tx"; mkdir -p "$tx/s1/subagents"; : > "$tx/s1.jsonl"
+printf '{"type":"user","message":{"role":"user","content":"Build it.\\nkeel-unit: m1-t12\\n"}}\n{"type":"assistant"}\n' > "$tx/s1/subagents/agent-ag12.jsonl"
+printf '{"type":"user","message":{"role":"user","content":"Look around."}}\n{"text":"see keel-unit: m3-t02 in the skill"}\n' > "$tx/s1/subagents/agent-ag13.jsonl"
+trk PostToolUse "$(jq -cn --arg t "$tx/s1.jsonl" '{tool_name:"Read", agent_id:"ag12", transcript_path:$t, tool_input:{}}')"
+check "track: builder heartbeat names its unit" '1'     "$(ev '"type":"heartbeat","session":"sess1234","agent":"ag12","unit":"m1-t12"')"
+trk SubagentStop "$(jq -cn --arg t "$tx/s1/subagents/agent-ag12.jsonl" '{agent_id:"ag12", agent_transcript_path:$t, last_assistant_message:"done"}')"
+check "track: return found from the builder's brief" '1' "$(ev '"type":"unit.returned","session":"sess1234","agent":"ag12","unit":"m1-t12"')"
+trk SubagentStop "$(jq -cn --arg t "$tx/s1/subagents/agent-ag13.jsonl" '{agent_id:"ag13", agent_transcript_path:$t, last_assistant_message:"done"}')"
+check "track: tag outside the brief is ignored" '1'     "$(ev '"type":"agent.returned","session":"sess1234","agent":"ag13"')"
 
 # Links planted in a cloned repo's .work/ are never followed
 outside="$tmp/outside"; mkdir -p "$outside"; : > "$outside/rc"

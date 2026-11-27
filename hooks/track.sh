@@ -17,9 +17,9 @@ set -uo pipefail
 command -v jq >/dev/null 2>&1 || exit 0
 
 input=$(cat)
-fields=$(printf '%s' "$input" | jq -r '[.hook_event_name, .cwd, .session_id, .agent_id, .agent_type, .tool_name, .stop_hook_active, .source, .reason, .trigger]
+fields=$(printf '%s' "$input" | jq -r '[.hook_event_name, .cwd, .session_id, .agent_id, .agent_type, .tool_name, .stop_hook_active, .source, .reason, .trigger, .transcript_path, .agent_transcript_path]
   | map(if . == null then "" else tostring end) | join("\u001f")' 2>/dev/null) || exit 0
-IFS=$'\x1f' read -r event cwd sid aid atype tool active source reason trigger <<< "$fields"
+IFS=$'\x1f' read -r event cwd sid aid atype tool active source reason trigger transcript atranscript <<< "$fields"
 
 [ -n "$cwd" ] || cwd=$PWD
 root=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null) || root="$cwd"
@@ -91,13 +91,26 @@ check_files() { # phase changes and counsel approval, read from the task's own f
   fi
 }
 
+unit_of_agent() { # agent id, [its transcript]: the unit a builder works on, from the cached map or its brief
+  local u f
+  u=$(cat "$st/agent-$(safe "$1")" 2>/dev/null || true)
+  [ -z "$u" ] || { printf '%s' "$u"; return 0; }
+  # Claude Code keeps a subagent's transcript beside the session's; its first line is the brief.
+  f=${2:-}; [ -n "$f" ] || { [ -n "$transcript" ] && f="${transcript%.jsonl}/subagents/agent-$1.jsonl"; }
+  [ -n "$f" ] && [ -f "$f" ] && [ ! -L "$f" ] || return 0
+  u=$(unit_in "$(head -n 1 "$f" 2>/dev/null)")
+  [ -z "$u" ] || put "$st/agent-$(safe "$1")" "$u"
+  printf '%s' "$u"
+}
+
 beat() { # at most one heartbeat per agent per $beat_secs
-  local f last
+  local f last u=""
   f="$st/beat-$(safe "$ag")"; last=$(cat "$f" 2>/dev/null || echo 0)
   case "$last" in ''|*[!0-9]*) last=0 ;; esac
   [ $((epoch - last)) -ge "$beat_secs" ] || return 0
   put "$f" "$epoch"
-  emit heartbeat "$(cat "$st/agent-$(safe "$ag")" 2>/dev/null || true)"
+  [ "$ag" = main ] || u=$(unit_of_agent "$ag")
+  emit heartbeat "$u"
 }
 
 since_dispatch() { # unit, event type: true when that event is newer than the unit's last dispatch
@@ -154,7 +167,7 @@ agent_post() { # ties the new subagent's id to its unit; nudges about untagged b
 
 sub_stop() {
   local unit
-  unit=$(cat "$st/agent-$(safe "$ag")" 2>/dev/null || true)
+  unit=$(unit_of_agent "$ag" "$atranscript")
   [ -n "$unit" ] || unit=$(unit_in "$(field '.last_assistant_message')")
   local data; data=$(jq -cn --arg t "$atype" 'if $t == "" then {} else {agentType:$t} end')
   if [ -n "$unit" ]; then emit unit.returned "$unit" "$data"; else emit agent.returned "" "$data"; fi
@@ -225,6 +238,7 @@ open_units() { # units dispatched since their last commit, with their lease stat
 
 session_start() {
   emit session.started "" "$(jq -cn --arg s "$source" '{source:$s}')"
+  check_files
   [ -e "$st/last-commit" ] || put "$st/last-commit" "$(git -C "$root" rev-parse HEAD 2>/dev/null)"
   local ctx open list
   ctx="[keel track] Task '$slug' is open. This session's id is $sess: write it as assignee.session when you record an owner in the tracker."

@@ -38,12 +38,12 @@ All of these are written by `hooks/track.sh`. It is quiet when no keel task is o
 |---|---|---|
 | `unit.assigned` | `PostToolUse` on the tracker write | Opus writes a new owner to a task in the tracker: an `assignee` with an `assignedAt` the hook hasn't seen for that unit |
 | `unit.dispatched` | `PreToolUse` on the Agent tool | A builder is started with `keel-unit: <id>` in its brief |
-| `unit.returned` | `SubagentStop` | The builder finishes. The unit comes from the builder's agent id, which the hook tied to the unit when it was dispatched, or from the `keel-unit:` line the builder ends its report with |
+| `unit.returned` | `SubagentStop` | The builder finishes. The unit comes from the `keel-unit:` line in the builder's brief (the first line of its own transcript), from its agent id once the dispatch result has named it, or from the `keel-unit:` line the builder ends its report with |
 | `unit.committed` | `PostToolUse` on `git commit` | The new commit carries a `Keel-Unit: <id>` trailer |
 | `phase.changed` | `PostToolUse` on `task.md` | The `phase:` line changes |
 | `counsel.approved` | `PostToolUse` on `shape.md` or `task.md` | A `Counsel verdict: approved` line appears |
 | `tracker.write` | `PostToolUse` on the tracker write | Any write to this task's tracker |
-| `heartbeat` | `PostToolUse` on any tool | At most once a minute per agent |
+| `heartbeat` | `PostToolUse` on any tool | At most once a minute per agent; a builder's heartbeat names its unit |
 | `session.started`, `turn.ended`, `session.compacting`, `session.ended` | `SessionStart`, `Stop`, `PreCompact`, `SessionEnd` | The session's own lifecycle |
 | `session.failed` | `StopFailure` | A turn ended on an API error, such as a usage limit |
 | `dispatch.refused` | `PreToolUse` on the Agent tool | The dispatch gate said no |
